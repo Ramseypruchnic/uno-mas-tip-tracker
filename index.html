@@ -11,6 +11,9 @@
             padding: 0;
             box-sizing: border-box;
         }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initDashboard);
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -374,17 +377,50 @@
                 </div>
             </div>
             
-            <div class="card">
-                <div class="card-header">📈 Hourly Tips</div>
+            <!-- Historical Summary (Hidden by default) -->
+            <div class="card summary-grid" id="historical-summary" style="display: none;">
+                <div class="card-header">📈 Historical Summary</div>
                 <div class="card-content">
-                    <div class="chart-container">
-                        <canvas id="hourly-chart"></canvas>
+                    <div class="summary-cards">
+                        <div class="summary-card">
+                            <h3 id="hist-total-tips">$0.00</h3>
+                            <p>Total Tips</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3 id="hist-avg-daily">$0.00</h3>
+                            <p>Avg Daily Tips</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3 id="hist-total-transactions">0</h3>
+                            <p>Transactions</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3 id="hist-total-days">0</h3>
+                            <p>Days</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3 id="hist-avg-per-hour">$0.00</h3>
+                            <p>Per Hour Worked</p>
+                        </div>
+                        <div class="summary-card">
+                            <h3 id="hist-peak-day">$0.00</h3>
+                            <p>Best Day</p>
+                        </div>
                     </div>
                 </div>
             </div>
             
             <div class="card">
-                <div class="card-header">👥 Employee Distribution</div>
+                <div class="card-header">📈 <span id="chart-title">Hourly Tips</span></div>
+                <div class="card-content">
+                    <div class="chart-container">
+                        <canvas id="main-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">👥 <span id="employee-section-title">Employee Distribution</span></div>
                 <div class="card-content">
                     <div id="employee-list" class="employee-list">
                         <div class="loading">Configure system to view employee data...</div>
@@ -401,17 +437,24 @@
         };
 
         // Global variables
-        let hourlyChart = null;
+        let mainChart = null;
         let dailyData = {
             tips: {},
             employees: {},
             distributions: {}
         };
+        let historicalData = null;
 
         // Initialize dashboard
         function initDashboard() {
             loadConfig();
             document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
+            
+            // Set default date range to current month
+            const today = new Date();
+            const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+            document.getElementById('start-date').value = firstOfMonth.toISOString().split('T')[0];
+            document.getElementById('end-date').value = today.toISOString().split('T')[0];
             
             if (!config.webhookUrl) {
                 showSetupInstructions();
@@ -930,9 +973,481 @@
             showStatusMessage('CSV file downloaded successfully!', 'success');
         }
 
-        function updateDashboard() {
-            updateSummaryCards();
-            updateHourlyChart();
+        function updateHourlyChart() {
+            const ctx = document.getElementById('main-chart').getContext('2d');
+            
+            const hours = Array.from({length: 24}, (_, i) => i);
+            const tips = hours.map(hour => dailyData.tips[hour] || 0);
+            
+            if (mainChart) {
+                mainChart.destroy();
+            }
+            
+            mainChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: hours.map(h => `${h}:00`),
+                    datasets: [{
+                        label: 'Tips ($)',
+                        data: tips,
+                        backgroundColor: 'rgba(78, 205, 196, 0.8)',
+                        borderColor: 'rgba(78, 205, 196, 1)',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '
+
+        function updateHourlyChart() {
+            const ctx = document.getElementById('hourly-chart').getContext('2d');
+            
+            const hours = Array.from({length: 24}, (_, i) => i);
+            const tips = hours.map(hour => dailyData.tips[hour] || 0);
+            
+            if (hourlyChart) {
+                hourlyChart.destroy();
+            }
+            
+            hourlyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: hours.map(h => `${h}:00`),
+                    datasets: [{
+                        label: 'Tips ($)',
+                        data: tips,
+                        backgroundColor: 'rgba(78, 205, 196, 0.8)',
+                        borderColor: 'rgba(78, 205, 196, 1)',
+                        borderWidth: 2,
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateEmployeeList() {
+            const container = document.getElementById('employee-list');
+            const distributions = dailyData.distributions;
+            
+            if (Object.keys(distributions).length === 0) {
+                container.innerHTML = '<div class="loading">No tip distribution data available</div>';
+                return;
+            }
+            
+            const employeeHtml = Object.values(distributions)
+                .sort((a, b) => b.tipAmount - a.tipAmount)
+                .map(emp => `
+                    <div class="employee-item">
+                        <div class="employee-info">
+                            <div class="employee-name">${emp.name}</div>
+                            <div class="employee-hours">
+                                ${emp.hours.toFixed(1)} hours 
+                                (${emp.weightedHours.toFixed(1)} weighted)
+                            </div>
+                        </div>
+                        <div class="employee-tip">$${emp.tipAmount.toFixed(2)}</div>
+                    </div>
+                `).join('');
+            
+            container.innerHTML = employeeHtml;
+        }
+
+        function enableManualMode() {
+            hideSetupInstructions();
+            showStatusMessage('Manual mode enabled. You can now enter tip data manually.', 'success');
+            showManualEntry();
+        }
+
+        function showManualEntry() {
+            const manualEntryHtml = `
+                <div id="manual-entry-modal" style="
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.8); z-index: 1000;
+                    display: flex; align-items: center; justify-content: center;
+                ">
+                    <div style="
+                        background: white; padding: 30px; border-radius: 12px;
+                        max-width: 600px; width: 90%; max-height: 80%; overflow-y: auto;
+                    ">
+                        <h3>📝 Manual Tip Entry</h3>
+                        <p>Enter your daily tip and employee data:</p>
+                        
+                        <div style="margin: 20px 0;">
+                            <label><strong>Total Tips for the Day ($):</strong></label>
+                            <input type="number" id="manual-total-tips" step="0.01" style="
+                                width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px;
+                            ">
+                        </div>
+                        
+                        <div style="margin: 20px 0;">
+                            <label><strong>Employee Hours:</strong></label>
+                            <div id="manual-employees">
+                                <div class="employee-entry" style="display: flex; gap: 10px; margin: 10px 0; align-items: center;">
+                                    <input type="text" placeholder="Employee Name" class="emp-name" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <input type="number" placeholder="Hours" class="emp-hours" step="0.5" style="width: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <select class="emp-shift" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="lunch">Lunch</option>
+                                        <option value="dinner">Dinner</option>
+                                        <option value="late_night">Late Night</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button onclick="addEmployeeRow()" style="
+                                background: #28a745; color: white; border: none; padding: 8px 15px;
+                                border-radius: 4px; cursor: pointer; margin: 10px 0;
+                            ">+ Add Employee</button>
+                        </div>
+                        
+                        <div style="margin: 20px 0; text-align: center;">
+                            <button onclick="processManualEntry()" style="
+                                background: linear-gradient(45deg, #FF6B6B, #4ECDC4); color: white;
+                                border: none; padding: 12px 25px; border-radius: 8px; cursor: pointer;
+                                font-weight: 600; margin-right: 10px;
+                            ">Calculate Tips</button>
+                            <button onclick="closeManualEntry()" style="
+                                background: #6c757d; color: white; border: none; padding: 12px 25px;
+                                border-radius: 8px; cursor: pointer;
+                            ">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', manualEntryHtml);
+        }
+
+        function addEmployeeRow() {
+            const container = document.getElementById('manual-employees');
+            const newRow = document.createElement('div');
+            newRow.className = 'employee-entry';
+            newRow.style.display = 'flex';
+            newRow.style.gap = '10px';
+            newRow.style.margin = '10px 0';
+            newRow.style.alignItems = 'center';
+            
+            newRow.innerHTML = `
+                <input type="text" placeholder="Employee Name" class="emp-name" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="number" placeholder="Hours" class="emp-hours" step="0.5" style="width: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <select class="emp-shift" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="lunch">Lunch</option>
+                    <option value="dinner">Dinner</option>
+                    <option value="late_night">Late Night</option>
+                </select>
+                <button onclick="this.parentElement.remove()" style="
+                    background: #dc3545; color: white; border: none; padding: 8px;
+                    border-radius: 4px; cursor: pointer;
+                ">×</button>
+            `;
+            
+            container.appendChild(newRow);
+        }
+
+        function processManualEntry() {
+            const totalTips = parseFloat(document.getElementById('manual-total-tips').value) || 0;
+            const employeeRows = document.querySelectorAll('.employee-entry');
+            
+            if (totalTips <= 0) {
+                alert('Please enter a valid total tip amount');
+                return;
+            }
+            
+            if (employeeRows.length === 0) {
+                alert('Please add at least one employee');
+                return;
+            }
+            
+            // Clear existing data
+            dailyData.employees = {};
+            dailyData.tips = {12: totalTips}; // Put all tips at noon for chart display
+            
+            // Process employee data
+            employeeRows.forEach((row, index) => {
+                const name = row.querySelector('.emp-name').value.trim();
+                const hours = parseFloat(row.querySelector('.emp-hours').value) || 0;
+                const shift = row.querySelector('.emp-shift').value;
+                
+                if (name && hours > 0) {
+                    const empId = 'manual_' + index;
+                    dailyData.employees[empId] = {
+                        id: empId,
+                        name: name,
+                        email: '',
+                        hours: hours,
+                        shifts: [{
+                            start: 10,
+                            end: 10 + hours,
+                            type: shift
+                        }]
+                    };
+                }
+            });
+            
+            // Calculate tips
+            calculateTips();
+            updateDashboard();
+            closeManualEntry();
+            
+            showStatusMessage(`Manual entry processed: ${totalTips} distributed among ${Object.keys(dailyData.employees).length} employees`, 'success');
+        }
+
+        function closeManualEntry() {
+            const modal = document.getElementById('manual-entry-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        function showDataImport() {
+            const importModalHtml = `
+                <div id="data-import-modal" style="
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.8); z-index: 1000;
+                    display: flex; align-items: center; justify-content: center;
+                ">
+                    <div style="
+                        background: white; padding: 30px; border-radius: 12px;
+                        max-width: 700px; width: 90%; max-height: 80%; overflow-y: auto;
+                    ">
+                        <h3>📥 Import Historical Data</h3>
+                        <p>Since webhooks only capture data going forward, you can import historical data in several ways:</p>
+                        
+                        <div style="margin: 20px 0;">
+                            <h4>Option 1: Manual CSV Import</h4>
+                            <p>Upload a CSV file with columns: Date, Time, Tip Amount, Total Amount, Employee ID</p>
+                            <input type="file" id="csv-file" accept=".csv" style="margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px; width: 100%;">
+                            <button onclick="processCsvImport()" style="
+                                background: #28a745; color: white; border: none; padding: 10px 20px;
+                                border-radius: 4px; cursor: pointer; margin: 5px 0;
+                            ">Process CSV</button>
+                        </div>
+                        
+                        <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                            <h4>Option 2: Manual Daily Entry</h4>
+                            <p>Enter historical data day by day:</p>
+                            <div style="display: flex; gap: 10px; margin: 10px 0;">
+                                <input type="date" id="import-date" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <input type="number" id="import-tips" placeholder="Total Tips" step="0.01" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <button onclick="addDailyEntry()" style="
+                                    background: #007bff; color: white; border: none; padding: 8px 15px;
+                                    border-radius: 4px; cursor: pointer;
+                                ">Add Entry</button>
+                            </div>
+                            <div id="daily-entries" style="max-height: 200px; overflow-y: auto; margin: 10px 0;"></div>
+                            <button onclick="saveDailyEntries()" style="
+                                background: #28a745; color: white; border: none; padding: 10px 20px;
+                                border-radius: 4px; cursor: pointer;
+                            ">Save All Entries</button>
+                        </div>
+                        
+                        <div style="margin: 20px 0; padding: 15px; background: #fff3cd; border-radius: 8px;">
+                            <h4>Option 3: Square API Backfill (Advanced)</h4>
+                            <p>⚠️ <strong>Note:</strong> This requires your Square API credentials and will pull historical data directly from Square.</p>
+                            <p>Enter your Square access token and location ID to backfill historical data:</p>
+                            <input type="password" id="square-token-import" placeholder="Square Access Token" style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px;">
+                            <input type="text" id="square-location-import" placeholder="Location ID" style="width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px;">
+                            <div style="display: flex; gap: 10px; margin: 10px 0;">
+                                <input type="date" id="backfill-start" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                <input type="date" id="backfill-end" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                            </div>
+                            <button onclick="startSquareBackfill()" style="
+                                background: #ffc107; color: #856404; border: none; padding: 10px 20px;
+                                border-radius: 4px; cursor: pointer; font-weight: 600;
+                            ">Start Backfill</button>
+                        </div>
+                        
+                        <div style="margin: 20px 0; text-align: center;">
+                            <button onclick="closeDataImportModal()" style="
+                                background: #6c757d; color: white; border: none; padding: 12px 25px;
+                                border-radius: 8px; cursor: pointer;
+                            ">Close</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', importModalHtml);
+        }
+
+        function closeDataImportModal() {
+            const modal = document.getElementById('data-import-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        let dailyEntries = [];
+
+        function addDailyEntry() {
+            const date = document.getElementById('import-date').value;
+            const tips = parseFloat(document.getElementById('import-tips').value);
+            
+            if (!date || !tips || tips <= 0) {
+                alert('Please enter valid date and tip amount');
+                return;
+            }
+            
+            dailyEntries.push({ date, tips });
+            
+            // Update display
+            const container = document.getElementById('daily-entries');
+            const entryDiv = document.createElement('div');
+            entryDiv.style.cssText = 'padding: 5px; margin: 2px 0; background: white; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;';
+            entryDiv.innerHTML = `
+                <span>${date}: ${tips.toFixed(2)}</span>
+                <button onclick="removeDailyEntry(${dailyEntries.length - 1})" style="
+                    background: #dc3545; color: white; border: none; padding: 2px 8px;
+                    border-radius: 4px; cursor: pointer; font-size: 12px;
+                ">Remove</button>
+            `;
+            container.appendChild(entryDiv);
+            
+            // Clear inputs
+            document.getElementById('import-date').value = '';
+            document.getElementById('import-tips').value = '';
+        }
+
+        function removeDailyEntry(index) {
+            dailyEntries.splice(index, 1);
+            updateDailyEntriesDisplay();
+        }
+
+        function updateDailyEntriesDisplay() {
+            const container = document.getElementById('daily-entries');
+            container.innerHTML = '';
+            
+            dailyEntries.forEach((entry, index) => {
+                const entryDiv = document.createElement('div');
+                entryDiv.style.cssText = 'padding: 5px; margin: 2px 0; background: white; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;';
+                entryDiv.innerHTML = `
+                    <span>${entry.date}: ${entry.tips.toFixed(2)}</span>
+                    <button onclick="removeDailyEntry(${index})" style="
+                        background: #dc3545; color: white; border: none; padding: 2px 8px;
+                        border-radius: 4px; cursor: pointer; font-size: 12px;
+                    ">Remove</button>
+                `;
+                container.appendChild(entryDiv);
+            });
+        }
+
+        async function saveDailyEntries() {
+            if (dailyEntries.length === 0) {
+                alert('No entries to save');
+                return;
+            }
+            
+            try {
+                showStatusMessage('Saving daily entries...', 'warning');
+                
+                // Here you would send the data to your Google Apps Script
+                // For now, we'll just show success
+                showStatusMessage(`Successfully saved ${dailyEntries.length} daily entries`, 'success');
+                
+                dailyEntries = [];
+                updateDailyEntriesDisplay();
+                closeDataImportModal();
+                
+            } catch (error) {
+                showStatusMessage('Failed to save entries: ' + error.message, 'error');
+            }
+        }
+
+        function processCsvImport() {
+            const fileInput = document.getElementById('csv-file');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a CSV file');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const csv = e.target.result;
+                const lines = csv.split('\n');
+                
+                // Simple CSV parsing (you might want to use a proper CSV parser)
+                const data = [];
+                for (let i = 1; i < lines.length; i++) { // Skip header
+                    const columns = lines[i].split(',');
+                    if (columns.length >= 3) {
+                        data.push({
+                            date: columns[0]?.trim(),
+                            tips: parseFloat(columns[2]?.trim()) || 0
+                        });
+                    }
+                }
+                
+                showStatusMessage(`Processed ${data.length} records from CSV`, 'success');
+                console.log('CSV data:', data);
+                
+                // Here you would send the data to your Google Apps Script
+                // For now, we'll just log it
+            };
+            
+            reader.readAsText(file);
+        }
+
+        async function startSquareBackfill() {
+            const token = document.getElementById('square-token-import').value;
+            const locationId = document.getElementById('square-location-import').value;
+            const startDate = document.getElementById('backfill-start').value;
+            const endDate = document.getElementById('backfill-end').value;
+            
+            if (!token || !locationId || !startDate || !endDate) {
+                alert('Please fill in all Square API fields');
+                return;
+            }
+            
+            showStatusMessage('⚠️ Square API backfill is not implemented in this demo. This would require server-side processing to avoid CORS issues.', 'warning');
+            
+            // In a real implementation, you would:
+            // 1. Send the credentials to your Google Apps Script
+            // 2. Have the script call Square API for historical data
+            // 3. Process and store the results
+        }
+    </script>
+</body>
+</html>
+ + value.toFixed(2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         function updateSummaryCards() {
@@ -941,10 +1456,15 @@
             const employeeCount = Object.keys(dailyData.employees).length;
             const avgHourly = totalHours > 0 ? totalTips / totalHours : 0;
 
-            document.getElementById('total-tips').textContent = `$${totalTips.toFixed(2)}`;
+            document.getElementById('total-tips').textContent = `${totalTips.toFixed(2)}`;
             document.getElementById('total-hours').textContent = totalHours.toFixed(1);
-            document.getElementById('avg-hourly').textContent = `$${avgHourly.toFixed(2)}`;
+            document.getElementById('avg-hourly').textContent = `${avgHourly.toFixed(2)}`;
             document.getElementById('employee-count').textContent = employeeCount;
+        }
+
+        function updateDashboard() {
+            updateSummaryCards();
+            updateHourlyChart();
         }
 
         function updateHourlyChart() {

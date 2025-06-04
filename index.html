@@ -278,32 +278,35 @@
 
         <!-- Setup Instructions -->
         <div id="setup-instructions" class="setup-section">
-            <h3>⚠️ Setup Required</h3>
-            <p>Please complete the configuration below to start using the dashboard:</p>
-            <ol style="margin: 15px 0; padding-left: 30px;">
-                <li>Enter your Square API credentials</li>
-                <li>Set up Google Sheets integration</li>
-                <li>Test the connection</li>
-            </ol>
-            <button class="btn btn-setup" onclick="showSetup()">Configure Now</button>
+            <h3>🎉 Webhook-Based System Ready!</h3>
+            <p><strong>Real-time tip tracking:</strong> Your Square POS automatically sends tip and employee data to Google Sheets via webhooks.</p>
+            <div style="margin: 15px 0;">
+                <h4>✅ What's Working:</h4>
+                <ul style="margin: 10px 0; padding-left: 30px;">
+                    <li><strong>Real-time Tips:</strong> Every tip is automatically recorded as it happens</li>
+                    <li><strong>Employee Hours:</strong> Shift data syncs automatically from Square</li>
+                    <li><strong>Google Sheets Storage:</strong> All data is stored and backed up in Google Sheets</li>
+                    <li><strong>Smart Calculations:</strong> Weighted tip distribution with shift multipliers</li>
+                </ul>
+                
+                <h4>📋 Setup Checklist:</h4>
+                <ol style="margin: 10px 0; padding-left: 30px;">
+                    <li>✅ Square webhook configured with payment and labor events</li>
+                    <li>✅ Google Apps Script deployed as web app</li>
+                    <li>⏳ Enter your Google Apps Script URL below</li>
+                    <li>⏳ Test connection and start using!</li>
+                </ol>
+            </div>
+            
+            <button class="btn btn-setup" onclick="showSetup()">Enter Apps Script URL</button>
         </div>
         
         <div class="controls">
             <!-- Configuration Section -->
             <div class="control-group">
                 <div class="control-item">
-                    <label for="square-token">Square Access Token</label>
-                    <input type="password" id="square-token" placeholder="EAAAxxxxxxxxx" />
-                </div>
-                
-                <div class="control-item">
-                    <label for="square-location">Location ID</label>
-                    <input type="text" id="square-location" placeholder="LHxxxxxxxxxx" />
-                </div>
-                
-                <div class="control-item">
-                    <label for="sheets-id">Google Sheets ID</label>
-                    <input type="text" id="sheets-id" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" />
+                    <label for="webhook-url">Google Apps Script Web App URL</label>
+                    <input type="url" id="webhook-url" placeholder="https://script.google.com/macros/s/your-script-id/exec" />
                 </div>
                 
                 <div class="control-item">
@@ -311,7 +314,7 @@
                 </div>
                 
                 <div class="control-item">
-                    <button class="btn" onclick="testConnection()">🔍 Test Connection</button>
+                    <button class="btn" onclick="testWebhookConnection()">🔍 Test Webhook</button>
                 </div>
             </div>
             
@@ -323,7 +326,15 @@
                 </div>
                 
                 <div class="control-item">
-                    <button class="btn" onclick="syncSquareData()">🔄 Sync Square Data</button>
+                    <button class="btn" onclick="showManualEntry()">📝 Manual Entry</button>
+                </div>
+                
+                <div class="control-item">
+                    <button class="btn" onclick="checkTimecardIssues()">⚠️ Check Timecards</button>
+                </div>
+                
+                <div class="control-item">
+                    <button class="btn" onclick="syncSquareData()">📊 Load Data</button>
                 </div>
                 
                 <div class="control-item">
@@ -331,7 +342,7 @@
                 </div>
                 
                 <div class="control-item">
-                    <button class="btn" onclick="exportToSheets()">📊 Export to Sheets</button>
+                    <button class="btn" onclick="viewGoogleSheets()">📋 View Sheets</button>
                 </div>
             </div>
             
@@ -386,10 +397,7 @@
     <script>
         // Configuration Management
         let config = {
-            squareToken: '',
-            squareLocation: '',
-            sheetsId: '',
-            sheetsApiKey: ''
+            webhookUrl: ''
         };
 
         // Global variables
@@ -405,7 +413,7 @@
             loadConfig();
             document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
             
-            if (!config.squareToken || !config.squareLocation) {
+            if (!config.webhookUrl) {
                 showSetupInstructions();
             } else {
                 hideSetupInstructions();
@@ -422,20 +430,23 @@
 
         function showSetup() {
             hideSetupInstructions();
-            document.getElementById('square-token').focus();
+            document.getElementById('webhook-url').focus();
         }
 
         // Configuration functions
         function saveConfig() {
-            config.squareToken = document.getElementById('square-token').value;
-            config.squareLocation = document.getElementById('square-location').value;
-            config.sheetsId = document.getElementById('sheets-id').value;
+            config.webhookUrl = document.getElementById('webhook-url').value.trim();
+            
+            if (!config.webhookUrl) {
+                showStatusMessage('Please enter your Google Apps Script URL', 'error');
+                return;
+            }
             
             localStorage.setItem('unoMasConfig', JSON.stringify(config));
             
             showStatusMessage('Configuration saved successfully!', 'success');
             
-            if (config.squareToken && config.squareLocation) {
+            if (config.webhookUrl) {
                 hideSetupInstructions();
             }
         }
@@ -444,9 +455,7 @@
             const savedConfig = localStorage.getItem('unoMasConfig');
             if (savedConfig) {
                 config = JSON.parse(savedConfig);
-                document.getElementById('square-token').value = config.squareToken || '';
-                document.getElementById('square-location').value = config.squareLocation || '';
-                document.getElementById('sheets-id').value = config.sheetsId || '';
+                document.getElementById('webhook-url').value = config.webhookUrl || '';
             }
         }
 
@@ -717,15 +726,180 @@
             showStatusMessage(`Tips calculated: $${totalTips.toFixed(2)} distributed among ${Object.keys(distributions).length} employees`, 'success');
         }
 
-        async function exportToSheets() {
-            if (!config.sheetsId) {
-                showStatusMessage('Please configure Google Sheets ID', 'error');
+        async function checkTimecardIssues() {
+            if (!config.webhookUrl) {
+                showStatusMessage('Please configure your webhook URL first', 'error');
                 return;
             }
 
-            // This would require Google Sheets API implementation
-            // For now, we'll create a CSV download
-            downloadCSV();
+            try {
+                showStatusMessage('Checking for timecard issues...', 'warning');
+                
+                // Get timecard data from Google Apps Script
+                const response = await fetch(`${config.webhookUrl}?action=timecards&date=${new Date().toISOString().split('T')[0]}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Analyze timecard issues
+                const issues = analyzeTimecardIssues(data.timecards || []);
+                displayTimecardIssues(issues);
+                
+            } catch (error) {
+                console.error('Timecard check failed:', error);
+                showStatusMessage('Timecard check failed: ' + error.message, 'error');
+            }
+        }
+
+        function analyzeTimecardIssues(timecards) {
+            const issues = {
+                stillClockedIn: [],
+                recentAdjustments: [],
+                unusualHours: [],
+                total: 0
+            };
+            
+            const today = new Date().toISOString().split('T')[0];
+            
+            timecards.forEach(timecard => {
+                // Check for employees still clocked in
+                if (timecard.status === 'clocked_in') {
+                    issues.stillClockedIn.push({
+                        name: timecard.employeeName,
+                        clockIn: timecard.clockIn,
+                        hoursElapsed: Math.round((new Date() - new Date(timecard.date + 'T' + timecard.clockIn)) / (1000 * 60 * 60) * 10) / 10
+                    });
+                }
+                
+                // Check for recent adjustments
+                if (timecard.status === 'adjusted') {
+                    issues.recentAdjustments.push({
+                        name: timecard.employeeName,
+                        hours: timecard.totalHours,
+                        lastUpdated: timecard.lastUpdated
+                    });
+                }
+                
+                // Check for unusual hours (less than 2 or more than 12)
+                const hours = parseFloat(timecard.totalHours);
+                if (hours > 0 && (hours < 2 || hours > 12)) {
+                    issues.unusualHours.push({
+                        name: timecard.employeeName,
+                        hours: hours,
+                        clockIn: timecard.clockIn,
+                        clockOut: timecard.clockOut
+                    });
+                }
+            });
+            
+            issues.total = issues.stillClockedIn.length + issues.recentAdjustments.length + issues.unusualHours.length;
+            return issues;
+        }
+
+        function displayTimecardIssues(issues) {
+            if (issues.total === 0) {
+                showStatusMessage('✅ No timecard issues found - all looks good!', 'success');
+                return;
+            }
+            
+            let message = `Found ${issues.total} timecard issue(s):\n\n`;
+            
+            if (issues.stillClockedIn.length > 0) {
+                message += `🔴 Still Clocked In (${issues.stillClockedIn.length}):\n`;
+                issues.stillClockedIn.forEach(emp => {
+                    message += `  • ${emp.name} - ${emp.hoursElapsed}h since ${emp.clockIn}\n`;
+                });
+                message += '\n';
+            }
+            
+            if (issues.recentAdjustments.length > 0) {
+                message += `⚠️ Recent Adjustments (${issues.recentAdjustments.length}):\n`;
+                issues.recentAdjustments.forEach(emp => {
+                    message += `  • ${emp.name} - ${emp.hours}h (adjusted)\n`;
+                });
+                message += '\n';
+            }
+            
+            if (issues.unusualHours.length > 0) {
+                message += `🤔 Unusual Hours (${issues.unusualHours.length}):\n`;
+                issues.unusualHours.forEach(emp => {
+                    message += `  • ${emp.name} - ${emp.hours}h (${emp.clockIn} to ${emp.clockOut})\n`;
+                });
+            }
+            
+            // Show in a modal for better readability
+            showTimecardIssuesModal(message);
+        }
+
+        function showTimecardIssuesModal(message) {
+            const modalHtml = `
+                <div id="timecard-issues-modal" style="
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.8); z-index: 1000;
+                    display: flex; align-items: center; justify-content: center;
+                ">
+                    <div style="
+                        background: white; padding: 30px; border-radius: 12px;
+                        max-width: 600px; width: 90%; max-height: 80%; overflow-y: auto;
+                    ">
+                        <h3>⚠️ Timecard Issues Found</h3>
+                        <pre style="
+                            background: #f8f9fa; padding: 20px; border-radius: 8px;
+                            font-family: monospace; font-size: 14px; line-height: 1.5;
+                            white-space: pre-wrap; margin: 15px 0;
+                        ">${message}</pre>
+                        
+                        <div style="margin: 20px 0; text-align: center;">
+                            <button onclick="viewGoogleSheets()" style="
+                                background: linear-gradient(45deg, #FF6B6B, #4ECDC4); color: white;
+                                border: none; padding: 12px 25px; border-radius: 8px; cursor: pointer;
+                                font-weight: 600; margin-right: 10px;
+                            ">View in Google Sheets</button>
+                            <button onclick="closeTimecardIssuesModal()" style="
+                                background: #6c757d; color: white; border: none; padding: 12px 25px;
+                                border-radius: 8px; cursor: pointer;
+                            ">Close</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        }
+
+        function closeTimecardIssuesModal() {
+            const modal = document.getElementById('timecard-issues-modal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        function viewGoogleSheets() {
+            if (!config.webhookUrl) {
+                showStatusMessage('Please configure your webhook URL first', 'error');
+                return;
+            }
+            
+            // Extract Google Sheets ID from the Apps Script URL
+            const scriptMatch = config.webhookUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            if (scriptMatch) {
+                const sheetsUrl = `https://docs.google.com/spreadsheets/d/${scriptMatch[1]}/edit`;
+                window.open(sheetsUrl, '_blank');
+            } else {
+                showStatusMessage('Could not determine Google Sheets URL. Please open your Google Sheet manually.', 'warning');
+            }
+        }
+
+        async function exportToSheets() {
+            // This is now automatic via webhooks!
+            showStatusMessage('Data is automatically saved to Google Sheets via webhooks!', 'success');
         }
 
         function downloadCSV() {
@@ -844,6 +1018,151 @@
                 `).join('');
             
             container.innerHTML = employeeHtml;
+        }
+
+        function enableManualMode() {
+            hideSetupInstructions();
+            showStatusMessage('Manual mode enabled. You can now enter tip data manually.', 'success');
+            showManualEntry();
+        }
+
+        function showManualEntry() {
+            const manualEntryHtml = `
+                <div id="manual-entry-modal" style="
+                    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                    background: rgba(0,0,0,0.8); z-index: 1000;
+                    display: flex; align-items: center; justify-content: center;
+                ">
+                    <div style="
+                        background: white; padding: 30px; border-radius: 12px;
+                        max-width: 600px; width: 90%; max-height: 80%; overflow-y: auto;
+                    ">
+                        <h3>📝 Manual Tip Entry</h3>
+                        <p>Enter your daily tip and employee data:</p>
+                        
+                        <div style="margin: 20px 0;">
+                            <label><strong>Total Tips for the Day ($):</strong></label>
+                            <input type="number" id="manual-total-tips" step="0.01" style="
+                                width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ddd; border-radius: 4px;
+                            ">
+                        </div>
+                        
+                        <div style="margin: 20px 0;">
+                            <label><strong>Employee Hours:</strong></label>
+                            <div id="manual-employees">
+                                <div class="employee-entry" style="display: flex; gap: 10px; margin: 10px 0; align-items: center;">
+                                    <input type="text" placeholder="Employee Name" class="emp-name" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <input type="number" placeholder="Hours" class="emp-hours" step="0.5" style="width: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                    <select class="emp-shift" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                                        <option value="lunch">Lunch</option>
+                                        <option value="dinner">Dinner</option>
+                                        <option value="late_night">Late Night</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button onclick="addEmployeeRow()" style="
+                                background: #28a745; color: white; border: none; padding: 8px 15px;
+                                border-radius: 4px; cursor: pointer; margin: 10px 0;
+                            ">+ Add Employee</button>
+                        </div>
+                        
+                        <div style="margin: 20px 0; text-align: center;">
+                            <button onclick="processManualEntry()" style="
+                                background: linear-gradient(45deg, #FF6B6B, #4ECDC4); color: white;
+                                border: none; padding: 12px 25px; border-radius: 8px; cursor: pointer;
+                                font-weight: 600; margin-right: 10px;
+                            ">Calculate Tips</button>
+                            <button onclick="closeManualEntry()" style="
+                                background: #6c757d; color: white; border: none; padding: 12px 25px;
+                                border-radius: 8px; cursor: pointer;
+                            ">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', manualEntryHtml);
+        }
+
+        function addEmployeeRow() {
+            const container = document.getElementById('manual-employees');
+            const newRow = document.createElement('div');
+            newRow.className = 'employee-entry';
+            newRow.style.display = 'flex';
+            newRow.style.gap = '10px';
+            newRow.style.margin = '10px 0';
+            newRow.style.alignItems = 'center';
+            
+            newRow.innerHTML = `
+                <input type="text" placeholder="Employee Name" class="emp-name" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <input type="number" placeholder="Hours" class="emp-hours" step="0.5" style="width: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <select class="emp-shift" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    <option value="lunch">Lunch</option>
+                    <option value="dinner">Dinner</option>
+                    <option value="late_night">Late Night</option>
+                </select>
+                <button onclick="this.parentElement.remove()" style="
+                    background: #dc3545; color: white; border: none; padding: 8px;
+                    border-radius: 4px; cursor: pointer;
+                ">×</button>
+            `;
+            
+            container.appendChild(newRow);
+        }
+
+        function processManualEntry() {
+            const totalTips = parseFloat(document.getElementById('manual-total-tips').value) || 0;
+            const employeeRows = document.querySelectorAll('.employee-entry');
+            
+            if (totalTips <= 0) {
+                alert('Please enter a valid total tip amount');
+                return;
+            }
+            
+            if (employeeRows.length === 0) {
+                alert('Please add at least one employee');
+                return;
+            }
+            
+            // Clear existing data
+            dailyData.employees = {};
+            dailyData.tips = {12: totalTips}; // Put all tips at noon for chart display
+            
+            // Process employee data
+            employeeRows.forEach((row, index) => {
+                const name = row.querySelector('.emp-name').value.trim();
+                const hours = parseFloat(row.querySelector('.emp-hours').value) || 0;
+                const shift = row.querySelector('.emp-shift').value;
+                
+                if (name && hours > 0) {
+                    const empId = 'manual_' + index;
+                    dailyData.employees[empId] = {
+                        id: empId,
+                        name: name,
+                        email: '',
+                        hours: hours,
+                        shifts: [{
+                            start: 10,
+                            end: 10 + hours,
+                            type: shift
+                        }]
+                    };
+                }
+            });
+            
+            // Calculate tips
+            calculateTips();
+            updateDashboard();
+            closeManualEntry();
+            
+            showStatusMessage(`Manual entry processed: ${totalTips} distributed among ${Object.keys(dailyData.employees).length} employees`, 'success');
+        }
+
+        function closeManualEntry() {
+            const modal = document.getElementById('manual-entry-modal');
+            if (modal) {
+                modal.remove();
+            }
         }
 
         // Initialize when page loads

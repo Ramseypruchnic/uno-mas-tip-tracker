@@ -214,11 +214,55 @@
             <div id="status-messages"></div>
         </div>
         
-        <div style="padding: 30px; text-align: center;">
-            <h2>🎉 Modal Issues Fixed!</h2>
-            <p>This version has bulletproof modal handling that won't get stuck.</p>
-            <br>
-            <button class="btn" onclick="showSimpleManualEntry()">Test Manual Entry Modal</button>
+        <div style="padding: 30px;">
+            <div style="background: #e8f5e8; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <h3>🎯 Setup Status</h3>
+                <div id="setup-status">
+                    <p>📋 <strong>Step 1:</strong> Enter your Google Apps Script URL above</p>
+                    <p>📋 <strong>Step 2:</strong> Click "Test Webhook" to verify connection</p>
+                    <p>📋 <strong>Step 3:</strong> Select a date and click "Load Data"</p>
+                    <p>📋 <strong>Step 4:</strong> Click "Calculate Tips" to see distribution</p>
+                </div>
+            </div>
+            
+            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <h3>🔧 Troubleshooting</h3>
+                <details>
+                    <summary style="cursor: pointer; font-weight: bold;">Common Issues & Solutions</summary>
+                    <div style="margin-top: 15px;">
+                        <h4>❌ "Webhook connection failed"</h4>
+                        <ul>
+                            <li>Make sure your Google Apps Script is <strong>deployed as Web App</strong></li>
+                            <li>Set access to <strong>"Anyone"</strong> in deployment settings</li>
+                            <li>Copy the <strong>exact Web App URL</strong> (ends in /exec)</li>
+                            <li>Try redeploying your Google Apps Script</li>
+                        </ul>
+                        
+                        <h4>❌ "No data found"</h4>
+                        <ul>
+                            <li>Make sure you have <strong>Square webhooks configured</strong></li>
+                            <li>Check if your <strong>Google Sheets have data</strong></li>
+                            <li>Try using <strong>Manual Entry</strong> to add test data</li>
+                            <li>Import historical data first</li>
+                        </ul>
+                        
+                        <h4>❌ CORS or Network Errors</h4>
+                        <ul>
+                            <li>Check your <strong>internet connection</strong></li>
+                            <li>Try accessing your Google Apps Script URL <strong>directly in browser</strong></li>
+                            <li>Make sure the URL is <strong>publicly accessible</strong></li>
+                        </ul>
+                    </div>
+                </details>
+            </div>
+            
+            <div style="text-align: center;">
+                <h2>🧪 Test Your System</h2>
+                <p>Use the buttons above to test each part of your tip tracking system.</p>
+                <br>
+                <button class="btn" onclick="showSimpleManualEntry()">📝 Test Manual Entry Modal</button>
+                <button class="btn" onclick="showDebugInfo()" style="margin-left: 10px;">🔍 Show Debug Info</button>
+            </div>
         </div>
     </div>
 
@@ -342,23 +386,220 @@
             }
         }
         
-        function testConnection() {
+        async function testConnection() {
             if (!config.webhookUrl) {
-                showStatusMessage('Please enter your webhook URL first', 'error');
+                showStatusMessage('Please enter your Google Apps Script URL first', 'error');
                 return;
             }
-            showStatusMessage('Testing connection...', 'warning');
-            // Add your connection test logic here
+            
+            try {
+                showStatusMessage('Testing webhook connection...', 'warning');
+                console.log('Testing URL:', config.webhookUrl);
+                
+                // Test with employee list endpoint
+                const response = await fetch(`${config.webhookUrl}?action=employees`);
+                console.log('Response status:', response.status);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Response data:', data);
+                    
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    showStatusMessage('✅ Webhook connection successful!', 'success');
+                    console.log('Available employees:', data.employees);
+                    return true;
+                } else {
+                    const errorText = await response.text();
+                    console.error('HTTP Error:', response.status, errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                console.error('Connection test failed:', error);
+                showStatusMessage(`❌ Webhook connection failed: ${error.message}`, 'error');
+                
+                // Provide specific troubleshooting
+                if (error.message.includes('CORS')) {
+                    showStatusMessage('💡 CORS Error: Make sure your Google Apps Script is deployed as "Anyone" can access', 'warning');
+                } else if (error.message.includes('404')) {
+                    showStatusMessage('💡 URL Not Found: Check your Google Apps Script deployment URL', 'warning');
+                } else if (error.message.includes('Failed to fetch')) {
+                    showStatusMessage('💡 Network Error: Check your internet connection and URL format', 'warning');
+                }
+                
+                return false;
+            }
         }
         
-        function loadData() {
-            showStatusMessage('Loading data...', 'warning');
-            // Add your data loading logic here
+        async function loadData() {
+            if (!config.webhookUrl) {
+                showStatusMessage('Please configure your Google Apps Script URL first', 'error');
+                return;
+            }
+
+            const date = document.getElementById('date-picker').value;
+            if (!date) {
+                showStatusMessage('Please select a date first', 'error');
+                return;
+            }
+
+            try {
+                showStatusMessage('Loading data from Google Sheets...', 'warning');
+                console.log('Loading data for date:', date);
+                
+                const response = await fetch(`${config.webhookUrl}?action=summary&date=${date}`);
+                console.log('Load data response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Load data error:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Loaded data:', data);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Display the data
+                displayLoadedData(data);
+                showStatusMessage(`✅ Data loaded: ${data.totalTips?.toFixed(2) || '0.00'} in tips, ${Object.keys(data.employees || {}).length} employees`, 'success');
+                
+            } catch (error) {
+                console.error('Data loading failed:', error);
+                showStatusMessage(`❌ Data loading failed: ${error.message}`, 'error');
+            }
         }
         
-        function calculateTips() {
-            showStatusMessage('Calculating tips...', 'warning');
-            // Add your tip calculation logic here
+        function displayLoadedData(data) {
+            // Create a simple data display
+            const content = `
+                <div style="text-align: left;">
+                    <h4>📊 Data Summary for ${data.date || 'Selected Date'}</h4>
+                    <div style="margin: 15px 0;">
+                        <strong>Total Tips:</strong> ${data.totalTips?.toFixed(2) || '0.00'}<br>
+                        <strong>Total Transactions:</strong> ${data.tipCount || 0}<br>
+                        <strong>Employees:</strong> ${Object.keys(data.employees || {}).length}<br>
+                        <strong>Total Hours:</strong> ${data.totalEmployeeHours?.toFixed(1) || '0.0'}
+                    </div>
+                    
+                    ${Object.keys(data.hourlyBreakdown || {}).length > 0 ? `
+                        <h5>⏰ Hourly Breakdown:</h5>
+                        <div style="max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                            ${Object.entries(data.hourlyBreakdown).map(([hour, tips]) => 
+                                `${hour}:00 - ${tips.toFixed(2)}<br>`
+                            ).join('')}
+                        </div>
+                    ` : '<p><em>No tip data found for this date</em></p>'}
+                    
+                    ${Object.keys(data.employees || {}).length > 0 ? `
+                        <h5>👥 Employees:</h5>
+                        <div style="max-height: 150px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                            ${Object.values(data.employees).map(emp => 
+                                `${emp.name} - ${emp.totalHours?.toFixed(1) || '0.0'} hours<br>`
+                            ).join('')}
+                        </div>
+                    ` : '<p><em>No employee data found for this date</em></p>'}
+                </div>
+                
+                <div style="margin: 30px 0; text-align: center;">
+                    <button onclick="closeAllModals()" style="
+                        background: #007bff; color: white; border: none; padding: 12px 25px;
+                        border-radius: 8px; cursor: pointer; font-size: 16px;
+                    ">Close</button>
+                </div>
+            `;
+            
+            createModal('📊 Loaded Data', content);
+        }
+        
+        async function calculateTips() {
+            if (!config.webhookUrl) {
+                showStatusMessage('Please configure your Google Apps Script URL first', 'error');
+                return;
+            }
+
+            const date = document.getElementById('date-picker').value;
+            if (!date) {
+                showStatusMessage('Please select a date first', 'error');
+                return;
+            }
+
+            try {
+                showStatusMessage('Calculating tip distribution...', 'warning');
+                console.log('Calculating tips for date:', date);
+                
+                const response = await fetch(`${config.webhookUrl}?action=calculate&date=${date}`);
+                console.log('Calculate response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Calculate error:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Calculation result:', data);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                // Display the calculation results
+                displayCalculationResults(data);
+                showStatusMessage(`✅ Tips calculated: ${data.totalTips?.toFixed(2)} distributed among ${data.totalEmployees} employees`, 'success');
+                
+            } catch (error) {
+                console.error('Tip calculation failed:', error);
+                showStatusMessage(`❌ Tip calculation failed: ${error.message}`, 'error');
+            }
+        }
+        
+        function displayCalculationResults(data) {
+            const content = `
+                <div style="text-align: left;">
+                    <h4>💰 Tip Distribution for ${data.date}</h4>
+                    <div style="margin: 15px 0;">
+                        <strong>Total Tips:</strong> ${data.totalTips?.toFixed(2) || '0.00'}<br>
+                        <strong>Total Employees:</strong> ${data.totalEmployees || 0}
+                    </div>
+                    
+                    ${data.distributions && Object.keys(data.distributions).length > 0 ? `
+                        <h5>👥 Employee Distribution:</h5>
+                        <div style="max-height: 300px; overflow-y: auto;">
+                            ${Object.values(data.distributions)
+                                .sort((a, b) => b.tipAmount - a.tipAmount)
+                                .map(emp => `
+                                    <div style="
+                                        display: flex; justify-content: space-between; align-items: center;
+                                        padding: 10px; margin: 5px 0; background: #f8f9fa; border-radius: 4px;
+                                    ">
+                                        <div>
+                                            <strong>${emp.name}</strong><br>
+                                            <small>${emp.hours?.toFixed(1)}h (${emp.weightedHours?.toFixed(1)} weighted)</small>
+                                        </div>
+                                        <div style="font-size: 1.2em; font-weight: bold; color: #28a745;">
+                                            ${emp.tipAmount?.toFixed(2)}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                        </div>
+                    ` : '<p><em>No distribution data available</em></p>'}
+                </div>
+                
+                <div style="margin: 30px 0; text-align: center;">
+                    <button onclick="closeAllModals()" style="
+                        background: #007bff; color: white; border: none; padding: 12px 25px;
+                        border-radius: 8px; cursor: pointer; font-size: 16px;
+                    ">Close</button>
+                </div>
+            `;
+            
+            createModal('💰 Tip Distribution Results', content);
         }
         
         function showStatusMessage(message, type = 'info') {
@@ -392,8 +633,66 @@
             }
         });
         
-        // Initialize
-        document.addEventListener('DOMContentLoaded', function() {
+        function showDebugInfo() {
+            const debugInfo = `
+                <div style="text-align: left; font-family: monospace; font-size: 14px;">
+                    <h4>🔍 Debug Information</h4>
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 4px; margin: 10px 0;">
+                        <strong>Configuration:</strong><br>
+                        Webhook URL: ${config.webhookUrl || 'Not set'}<br>
+                        Selected Date: ${document.getElementById('date-picker').value || 'Not selected'}<br>
+                        Browser: ${navigator.userAgent}<br>
+                        Page URL: ${window.location.href}
+                    </div>
+                    
+                    ${config.webhookUrl ? `
+                        <div style="background: #e8f5e8; padding: 15px; border-radius: 4px; margin: 10px 0;">
+                            <strong>Quick Test URLs:</strong><br>
+                            <a href="${config.webhookUrl}?action=employees" target="_blank">Test Employees Endpoint</a><br>
+                            <a href="${config.webhookUrl}?action=summary&date=2025-06-04" target="_blank">Test Summary Endpoint</a><br>
+                            <small>Click these links to test your Google Apps Script directly</small>
+                        </div>
+                    ` : ''}
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 4px; margin: 10px 0;">
+                        <strong>Browser Console:</strong><br>
+                        Press F12 and check the Console tab for detailed error messages.<br>
+                        Look for red error messages when testing connections.
+                    </div>
+                </div>
+                
+                <div style="margin: 30px 0; text-align: center;">
+                    <button onclick="copyDebugInfo()" style="
+                        background: #17a2b8; color: white; border: none; padding: 12px 25px;
+                        border-radius: 8px; cursor: pointer; margin-right: 10px;
+                    ">Copy Debug Info</button>
+                    <button onclick="closeAllModals()" style="
+                        background: #6c757d; color: white; border: none; padding: 12px 25px;
+                        border-radius: 8px; cursor: pointer;
+                    ">Close</button>
+                </div>
+            `;
+            
+            createModal('🔍 Debug Information', debugInfo);
+        }
+        
+        function copyDebugInfo() {
+            const debugText = `
+Debug Info for Uno Más Tip Tracker:
+- Webhook URL: ${config.webhookUrl || 'Not set'}
+- Selected Date: ${document.getElementById('date-picker').value || 'Not selected'}
+- Browser: ${navigator.userAgent}
+- Page URL: ${window.location.href}
+- Timestamp: ${new Date().toISOString()}
+            `.trim();
+            
+            navigator.clipboard.writeText(debugText).then(() => {
+                showStatusMessage('Debug info copied to clipboard!', 'success');
+            }).catch(() => {
+                console.log('Debug info:', debugText);
+                showStatusMessage('Debug info logged to console (press F12)', 'warning');
+            });
+        }
             loadConfig();
             document.getElementById('date-picker').value = new Date().toISOString().split('T')[0];
             

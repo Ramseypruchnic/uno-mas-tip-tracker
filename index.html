@@ -273,7 +273,18 @@
     </style>
 </head>
 <body>
-    <div class="dashboard-container">
+            <!-- Emergency Close Button (Always Visible) -->
+        <div id="emergency-close" style="
+            position: fixed; top: 10px; right: 10px; z-index: 99999;
+            background: #dc3545; color: white; border: none;
+            padding: 10px 15px; border-radius: 25px; cursor: pointer;
+            font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: none;
+        " onclick="emergencyClose()" title="Close all modals">
+            ✕ CLOSE ALL
+        </div>
+        
+        <div class="dashboard-container">
         <div class="header">
             <h1>🌮 Uno Más Tip Distribution</h1>
             <p>Track tips and hours with intelligent distribution</p>
@@ -1257,6 +1268,9 @@
         }
 
         function showDataImport() {
+            // Close any existing modals first
+            closeAllModals();
+            
             // Set reasonable default dates
             const today = new Date();
             const oneYearAgo = new Date();
@@ -1266,15 +1280,24 @@
             const defaultEndDate = today.toISOString().split('T')[0];
             
             const importModalHtml = `
-                <div id="data-import-modal" style="
+                <div id="data-import-modal" class="modal-overlay" onclick="closeDataImportModal(event)" style="
                     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
                     background: rgba(0,0,0,0.8); z-index: 1000;
                     display: flex; align-items: center; justify-content: center;
                 ">
-                    <div style="
+                    <div class="modal-content" onclick="event.stopPropagation()" style="
                         background: white; padding: 30px; border-radius: 12px;
                         max-width: 800px; width: 95%; max-height: 90%; overflow-y: auto;
+                        position: relative;
                     ">
+                        <!-- Close X button -->
+                        <button onclick="closeDataImportModal()" style="
+                            position: absolute; top: 15px; right: 15px;
+                            background: #dc3545; color: white; border: none;
+                            width: 30px; height: 30px; border-radius: 50%;
+                            cursor: pointer; font-size: 18px; font-weight: bold;
+                        ">×</button>
+                        
                         <h3>📥 Import Historical Data</h3>
                         <p style="margin-bottom: 20px; color: #666;">
                             <strong>Important:</strong> Webhooks only capture data going forward. Import your historical data to get complete analytics.
@@ -1361,7 +1384,7 @@
                         <div style="margin: 20px 0; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
                             <button onclick="closeDataImportModal()" style="
                                 background: #6c757d; color: white; border: none; padding: 12px 25px;
-                                border-radius: 8px; cursor: pointer;
+                                border-radius: 8px; cursor: pointer; font-size: 16px;
                             ">Close</button>
                         </div>
                     </div>
@@ -1369,14 +1392,109 @@
             `;
             
             document.body.insertAdjacentHTML('beforeend', importModalHtml);
+            showEmergencyButton(); // Show emergency close button
         }
 
-        function closeDataImportModal() {
+        function closeDataImportModal(event) {
+            // If clicked on overlay, close modal
+            if (event && event.target.classList.contains('modal-overlay')) {
+                closeDataImportModal();
+                return;
+            }
+            
             const modal = document.getElementById('data-import-modal');
             if (modal) {
                 modal.remove();
             }
         }
+
+        // Emergency modal management
+        function emergencyClose() {
+            console.log('Emergency close triggered');
+            closeAllModals();
+            hideEmergencyButton();
+            showStatusMessage('All modals closed', 'success');
+        }
+
+        function showEmergencyButton() {
+            const emergencyBtn = document.getElementById('emergency-close');
+            if (emergencyBtn) {
+                emergencyBtn.style.display = 'block';
+            }
+        }
+
+        function hideEmergencyButton() {
+            const emergencyBtn = document.getElementById('emergency-close');
+            if (emergencyBtn) {
+                emergencyBtn.style.display = 'none';
+            }
+        }
+
+        // Monitor for stuck modals
+        function checkForStuckModals() {
+            const modals = document.querySelectorAll('[id*="modal"]');
+            if (modals.length > 0) {
+                showEmergencyButton();
+            } else {
+                hideEmergencyButton();
+            }
+        }
+
+        // Run modal check every 2 seconds
+        setInterval(checkForStuckModals, 2000);
+
+        function closeAllModals() {
+            // Close all possible modals
+            const modalSelectors = [
+                '#data-import-modal',
+                '#timecard-issues-modal', 
+                '#manual-entry-modal',
+                '[id*="modal"]',
+                '.modal-overlay'
+            ];
+            
+            modalSelectors.forEach(selector => {
+                const modals = document.querySelectorAll(selector);
+                modals.forEach(modal => {
+                    if (modal && modal.remove) {
+                        modal.remove();
+                    }
+                });
+            });
+            
+            // Clear any remaining modal backgrounds
+            const overlays = document.querySelectorAll('[style*="position: fixed"]');
+            overlays.forEach(overlay => {
+                if (overlay.style.zIndex > 1000) {
+                    overlay.remove();
+                }
+            });
+            
+            // Reset body scroll (in case it was disabled)
+            document.body.style.overflow = '';
+            
+            console.log('All modals closed');
+        }
+
+        // Add escape key listener to close modals
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                console.log('ESC key pressed - closing modals');
+                closeAllModals();
+                showStatusMessage('Modals closed with ESC key', 'success');
+            }
+        });
+
+        // Add double-click to close modals (emergency fallback)
+        document.addEventListener('dblclick', function(event) {
+            // If double-clicking on a modal background
+            if (event.target.classList.contains('modal-overlay') || 
+                event.target.id.includes('modal')) {
+                console.log('Double-click detected on modal - closing');
+                closeAllModals();
+                showStatusMessage('Modals closed with double-click', 'success');
+            }
+        });
 
         let dailyEntries = [];
 
